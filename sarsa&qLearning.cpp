@@ -15,7 +15,6 @@ enum Direction{
     NONE
 };
 
-
 class Action{
 public:
     double value = 0;
@@ -23,6 +22,7 @@ public:
 
     Action(Direction d): direction{d}{}
     Action(Action&& a): value{a.value}, direction{a.direction} {}
+    ~Action(){}
 };
 
 class State{
@@ -31,6 +31,7 @@ public:
     Direction policy = NONE;
 
     State(){}
+    ~State(){}
 };
 
 int detReward(int row, int column){
@@ -44,6 +45,10 @@ int detReward(int row, int column){
 };
 
 bool usePolicy(){
+    return (rand()%10 == 0);
+}
+
+bool explore(){
     return (rand()%10 == 0);
 }
 
@@ -65,11 +70,43 @@ double sPrimeMax(State& s){
     return highestValue;
 }
 
+Action& getAction(State& state){
+    if (!explore() && state.policy != NONE){
+        int index = 0;
+        for (int j = 0; j < state.availableActions.size(); j++){
+            if (state.availableActions.at(j).direction == state.policy){
+                index = j;
+                break;
+            }
+        }
+
+        return state.availableActions.at(index);
+    } else {   
+        double highestValue = -DBL_MAX;
+        int index = 0;
+        for (int j = 0; j < state.availableActions.size(); j++){
+            if (state.availableActions.at(j).value > highestValue){
+                highestValue = state.availableActions.at(j).value;
+                index = j; 
+            }
+        }
+
+        //Action& action = state.availableActions.at(rand()%state.availableActions.size());
+        Action& action = state.availableActions.at(index);  
+        state.policy = action.direction;
+        return action;
+    }
+}
+
+
 int main(){
     std::srand(std::time(nullptr));
-    
-    State states[rows][columns];
     double alpha = .1, eGreedy = .1; 
+    int row, column;
+    int score = 0;
+
+
+    State states[rows][columns];
 
     // initialize states w/ available actions
     for (int i = 0; i < rows; i++){
@@ -99,41 +136,12 @@ int main(){
         }
     }
 
-    int row, column;
-
-    int score = 0;
-    for (int i =0; i < 10000; i++){
+    for (int i =0; i < 500; i++){
         //std::cout << i << std::endl;
         row = rows-1;
         column = 0;
         
         while(true){
-            // std::cout << "ROW: "<< row << " Column: " << column << std::endl;
-            // for (int y = 0; y < rows; y++){
-            //     for (int x = 0; x < columns; x++){
-            //         switch (states[y][x].policy){
-            //             case NORTH:
-            //                 std::cout << "^";
-            //                 break;
-            //             case SOUTH:
-            //                 std::cout << "v";
-            //                 break;
-            //             case EAST:
-            //                 std::cout << ">";
-            //                 break;
-            //             case WEST:
-            //                 std::cout << "<";
-            //                 break;
-            //             default:
-            //                 std::cout<< "0";
-            //                 break;
-            //         } 
-            //     }
-            //     std::cout<<'\n';
-            // }
-
-            
-
             int location = detReward(row, column);
             if (location == -101){
                 break;
@@ -208,31 +216,147 @@ int main(){
         }
     }
 
-    row = rows-1; 
-    column = 0;
-
-    while (row != rows-1 || column != columns-1){
-        State& currentState = states[row][column];
-        switch (currentState.policy){
-            case NORTH:
-                row-=1;
-                std::cout << "NORTH" << std::endl;
-                break;
-            case SOUTH:
-                row+=1;
-                std::cout << "SOUTH" << std::endl;
-                break;
-            case EAST:
-                column+=1;
-                std::cout << "EAST" << std::endl;
-                break;
-            case WEST:
-                column-=1;
-                std::cout << "WEST" << std::endl;
-                break;
-        } 
+    for (int y = 0; y < rows; y++){
+        for (int x = 0; x < columns; x++){
+            switch (states[y][x].policy){
+                case NORTH:
+                    std::cout << "^";
+                    break;
+                case SOUTH:
+                    std::cout << "v";
+                    break;
+                case EAST:
+                    std::cout << ">";
+                    break;
+                case WEST:
+                    std::cout << "<";
+                    break;
+                default:
+                    std::cout<< "0";
+                    break;
+            } 
+        }
+        std::cout<<'\n';
     }
     std::cout << score << std::endl;
+
+
+    /*---------------------------------------------------------------*/
+    /*--------------SARSA LEARNING IMPLEMENTATION--------------------*/
+    /*---------------------------------------------------------------*/
+
+    State sStates[rows][columns];
+
+    // initialize sStates w/ available actions
+    for (int i = 0; i < rows; i++){
+        for (int j = 0; j < columns; j++){
+            if (i < rows-1 || (i == rows-1 && j == 0)){
+                //up
+                if (i > 0){
+                    Action action(NORTH);
+                    sStates[i][j].availableActions.push_back(std::move(action));
+                }
+                //down
+                if (i < rows-1){
+                    Action action(SOUTH);
+                    sStates[i][j].availableActions.push_back(std::move(action));
+                }
+                //left
+                if (j > 0){
+                    Action action(WEST);
+                    sStates[i][j].availableActions.push_back(std::move(action));
+                }
+                //right
+                if (j < columns-1){
+                    Action action(EAST);
+                    sStates[i][j].availableActions.push_back(std::move(action));
+                }
+            }
+        }
+    }
+
+
+    score = 0;
+    State* currentState;
+    Action* action;
+    for (int i =0; i < 500; i++){
+        //std::cout << i << std::endl;
+        row = rows-1;
+        column = 0;
+
+        currentState = &sStates[row][column];
+        action = &getAction(*currentState);
+
+        
+        while(true){
+            int location = detReward(row, column);
+            if (location == -101){
+                break;
+            }else if (location == 1){
+                score++;
+                break;
+            }
+
+            switch (action->direction){
+                case NORTH:
+                    row-=1;
+                    break;
+                case SOUTH:
+                    row+=1;
+                    break;
+                case EAST:
+                    column+=1;
+                    break;
+                case WEST:
+                    column-=1;
+                    break;
+                default:
+                    return -1;
+            }
+            State& nextState = sStates[row][column];
+            
+            if (nextState.availableActions.size() > 0){
+                
+                Action& nextAction = getAction(nextState);
+                action->value = redefineAction(action->value, alpha, -1, nextAction.value);
+
+                currentState = &nextState;
+                action = &nextAction;
+            }else {
+                action->value = redefineAction(action->value, alpha, detReward(row, column), 0);
+            } 
+
+        }
+    }
+
+    currentState = nullptr;
+    action = nullptr;
+
+
+    for (int y = 0; y < rows; y++){
+        for (int x = 0; x < columns; x++){
+            switch (sStates[y][x].policy){
+                case NORTH:
+                    std::cout << "^";
+                    break;
+                case SOUTH:
+                    std::cout << "v";
+                    break;
+                case EAST:
+                    std::cout << ">";
+                    break;
+                case WEST:
+                    std::cout << "<";
+                    break;
+                default:
+                    std::cout<< "0";
+                    break;
+            } 
+        }
+        std::cout<<'\n';
+    }
+    std::cout << score<< std::endl;
+    
 
     return 0;
 }
